@@ -1,8 +1,9 @@
-
 import cv2
 import numpy as np
 import pytesseract
 from ultralytics import YOLO
+import json
+import re
 import json
 
 # Load YOLOv8 model
@@ -11,9 +12,9 @@ model = YOLO(model_path)
 
 # Required ID features & confidence thresholds
 required_classes = {
-    "ID Number": 0.87,
-    "Rwandan Flag": 0.87,
-    "Coat of Arms": 0.87,
+    "Coat of Arms": 0.70,
+    "Rwandan Flag": 0.75,  # Lower the threshold
+    "ID number": 0.85,
     "Text Area": 0.85,
 }
 
@@ -69,11 +70,16 @@ def is_rwandan_id(results):
                     "confidence": confidence
                 })
 
+    # Debug: Print detected and required classes
+    print(f"Detected Classes: {detected_classes}")
+    print(f"Required Classes: {set(required_classes.keys())}")
+
     # Validate if all required features are detected
-    if detected_classes == set(required_classes.keys()):
-        return True, required_detected_classes  # Return valid ID and detected classes info
-    else:
-        return False, required_detected_classes  # Return invalid ID and detected classes info
+    validation_passed = all(
+        cls in detected_classes for cls in required_classes.keys()
+    )
+
+    return validation_passed, required_detected_classes
 
 # Function to process uploaded image and extract necessary information
 def process_image(file_path):
@@ -89,22 +95,31 @@ def process_image(file_path):
     # Check if it's a valid Rwandan ID
     id_valid, detected_classes_info = is_rwandan_id(results)
 
-    # Extract text from "Text Area" if present
-    extracted_text = None
+    # Initialize variables to store extracted text
+    extracted_text_area = None
+    extracted_id_number = None
+
+    # Iterate over YOLO detection results
     for result in results:
         for box in result.boxes:
             class_name = result.names[int(box.cls)]
             confidence = float(box.conf)
+
+            # Extract text from "Text Area"
             if class_name == "Text Area" and confidence >= required_classes["Text Area"]:
-                extracted_text = extract_text(image, box.xyxy[0])
+                extracted_text_area = extract_text(image, box.xyxy[0])
+
+            # Extract text from "ID number"
+            if class_name == "ID number" and confidence >= required_classes["ID number"]:
+                extracted_id_number = extract_text(image, box.xyxy[0])
 
     # Format the result into JSON structure
     output = {
         "id_valid": id_valid,
-        "detected_classes_info": detected_classes_info,  # Return all detected classes with confidence
-        "extracted_text": extracted_text,
-        "message": "Valid Rwandan ID" if id_valid else "Missing required features",
+        "detected_classes_info": detected_classes_info,
+        "extracted_text_area": extracted_text_area,  # Raw text from Text Area
+        "extracted_id_number": extracted_id_number,  # Raw text from ID Number
+        "message": "ID successfully authenticated as Rwandan" if id_valid else "Missing required features",
     }
 
-    # Return the result as JSON
     print(output)
