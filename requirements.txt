@@ -8,5 +8,4 @@ ultralytics
 pytesseract
 fastapi
 uvicorn
-inference
-inference-sdk
+python-multipart
