@@ -1,0 +1,18 @@
+names:
+- Coat of Arms
+- Hologram
+- ID number
+- Photo
+- Rwandan Flag
+- Rwandan ID
+- Text Area
+nc: 7
+roboflow:
+  license: CC BY 4.0
+  project: rofandv1
+  url: https://universe.roboflow.com/rofand/rofandv1/dataset/4
+  version: 4
+  workspace: rofand
+test: ../test/images
+train: ../train/images
+val: ../valid/images
