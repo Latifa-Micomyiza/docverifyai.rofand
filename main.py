@@ -18,7 +18,7 @@ app.add_middleware(
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)  # Ensure the directory exists
 
-@app.post("/uploads")
+@app.post("/api/v1/rwanda-national-id")
 async def upload_image(file: UploadFile = File(...)):
     # Save uploaded image
     file_path = os.path.join(UPLOAD_DIR, file.filename)
@@ -28,4 +28,4 @@ async def upload_image(file: UploadFile = File(...)):
     # Process the image
     results = process_image(file_path)
 
-    return {"filename": file.filename, "results": results}
+    return results

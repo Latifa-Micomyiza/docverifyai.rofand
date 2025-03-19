@@ -10,6 +10,7 @@ async function uploadImage() {
         });
 
         let data = await response.json();
+        console.log(data)
         document.getElementById("result").innerText =
             `Rwandan ID: ${data.is_rwandan_id ? "Confirmed" : "Not Confirmed"}
         \nExtracted Text: ${data.extracted_texts.join(", ")}`;

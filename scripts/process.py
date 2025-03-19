@@ -3,6 +3,7 @@ import numpy as np
 import pytesseract
 from ultralytics import YOLO
 import os
+import re
 
 # Load YOLOv8 model
 model_path = "runs/detect/train/weights/best.pt"
@@ -11,42 +12,38 @@ model = YOLO(model_path)
 # Required ID features & confidence thresholds
 required_classes = {
     "Coat of Arms": 0.70,
-    "Rwandan Flag": 0.60,  # Lower the threshold
-    "ID number": 0.78,
-    "Text Area": 0.85,
+    "Rwandan Flag": 0.60,
+    "ID number": 0.9,
+    "Text Area": 0.9,
 }
 
 # Preprocessing function for improving image for text recognition
+
+
 def preprocess_image(cropped_image):
     """Preprocess image for OCR: convert to grayscale, blur, thresholding, and resize."""
-    # Convert to grayscale
     gray = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2GRAY)
-
-    # Apply Gaussian blur to reduce noise
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-
-    # Apply binary thresholding to enhance contrast
-    _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-    # Optionally resize the image to a larger size for better recognition
-    resized = cv2.resize(thresh, None, fx=1.5, fy=1.5, interpolation=cv2.INTER_CUBIC)
-
+    _, thresh = cv2.threshold(
+        blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    resized = cv2.resize(thresh, None, fx=1.5, fy=1.5,
+                         interpolation=cv2.INTER_CUBIC)
     return resized
 
 # Function to extract text from bounding box
+
+
 def extract_text(image, box):
     """Extract text from a given bounding box using pytesseract."""
     x1, y1, x2, y2 = map(int, box)
-    cropped_image = image[y1:y2, x1:x2]  # Crop the text area
-
-    # Preprocess the cropped image
+    cropped_image = image[y1:y2, x1:x2]
     preprocessed_image = preprocess_image(cropped_image)
-
-    # Extract text using pytesseract
     text = pytesseract.image_to_string(preprocessed_image, config="--psm 6")
     return text.strip()
 
 # Function to check if the detected features match the Rwandan ID requirements
+
+
 def is_rwandan_id(results):
     """Check if the image contains all required features for a Rwandan ID."""
     detected_classes = set()
@@ -82,10 +79,9 @@ def is_rwandan_id(results):
 # Function to transform the extracted text into the desired format
 def transform_output(extracted_text_area, extracted_id_number):
     """Transform the extracted text and ID number into the desired format."""
-    # Split the text area into lines
-    lines = extracted_text_area.split("\n")
+    lines = [line.strip()
+             for line in extracted_text_area.split("\n") if line.strip()]
 
-    # Define keywords and their corresponding keys
     keywords = {
         "Amazina / Names": {
             "key": "namesOnNationalId",
@@ -99,45 +95,66 @@ def transform_output(extracted_text_area, extracted_id_number):
             "key": "gender",
             "name": "Igitsina / Sex"
         },
-        "Aho Yatangiwe / Place of Issue": {
+        "Ato Yatangiwe / Place of Issue": {
             "key": "placeOfIssue",
             "name": "Aho Yatangiwe / Place of Issue"
         }
     }
 
-    # Initialize the result list
     result = []
 
-    # Iterate through lines and extract key-value pairs
     for i, line in enumerate(lines):
         for keyword, field_info in keywords.items():
             if keyword in line:
-                # The value is usually the next line
-                if i + 1 < len(lines):
-                    value = lines[i + 1].strip()
-                    if value:  # Only add non-empty values
-                        result.append({
-                            "key": field_info["key"],
-                            "name": field_info["name"],
-                            "value": value
-                        })
-                break
+                value = None
+                for j in range(i + 1, len(lines)):
+                    candidate = lines[j].strip()
+                    if candidate:
+                        value = candidate
+                        break
+                if value:
+                    value = re.sub(r"\|$", "", value).strip()
+                    value = re.sub(r"[.\s]+$", "", value)
 
-    # Add the ID number to the result
+                    existing = next(
+                        (item for item in result if item["key"] == field_info["key"]), None)
+                    if not existing:
+                        if field_info["key"] == "gender":
+                            gender_value = value.split(
+                                '/')[0].strip() + " / " + value.split('/')[1].strip()[0]
+                            result.append({
+                                "key": "gender",
+                                "name": "Igitsina / Sex",
+                                "value": gender_value
+                            })
+                            place_value = value.split(
+                                '/')[1].strip()[2:] + " /" + value.split('/')[2]
+
+                            if place_value:
+                                result.append({
+                                    "key": "placeOfIssue",
+                                    "name": "Aho Yatangiwe / Place of Issue",
+                                    "value": place_value
+                                })
+                        else:
+                            result.append({
+                                "key": field_info["key"],
+                                "name": field_info["name"],
+                                "value": value
+                            })
+
     if extracted_id_number:
         result.append({
             "key": "nationalId",
-            "name": "Indangamuntu / National ID No.",
+            "name": "Indangamuntu / National ID No",
             "value": extracted_id_number
         })
-
-    # Debug: Print the result
-    print("Transformed Result:")
-    print(result)
 
     return result
 
 # Function to process the uploaded image
+
+
 def process_image(file_path):
     """Process the uploaded image to detect features and extract text."""
     # Read the image directly from the file path
@@ -184,16 +201,11 @@ def process_image(file_path):
     print("Raw Output:")
     print(output)
 
-    # Transform the output into the desired format
     if extracted_text_area and extracted_id_number:
-        transformed_output = transform_output(extracted_text_area, extracted_id_number)
-        print("Transformed Output:")
-        print(transformed_output)
+        transformed_output = transform_output(
+            extracted_text_area, extracted_id_number)
+        os.remove(file_path)
+        return {"verified": id_valid, "documentDetails": transformed_output}
     else:
-        print("Error: Missing extracted text or ID number.")
-        return output
-
-    os.remove(file_path)
-    print(f"File {file_path} deleted successfully.")
-
-
+        os.remove(file_path)
+        return {"verified": id_valid, "details": output}
