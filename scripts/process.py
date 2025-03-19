@@ -18,8 +18,6 @@ required_classes = {
 }
 
 # Preprocessing function for improving image for text recognition
-
-
 def preprocess_image(cropped_image):
     """Preprocess image for OCR: convert to grayscale, blur, thresholding, and resize."""
     gray = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2GRAY)
